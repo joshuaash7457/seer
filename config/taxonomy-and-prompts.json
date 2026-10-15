@@ -1,0 +1,43 @@
+{
+  "products": [
+    "Move 4K",
+    "Move SE",
+    "Link 4K",
+    "Studio Pro",
+    "Studio 4K",
+    "PT30X-SDI / PT20X-SDI / PT12X-SDI (Gen 2)",
+    "PT30X-NDI / PT20X-NDI / PT12X-NDI (Gen 2)",
+    "SuperJoy (PT-SUPERJOY-G1)",
+    "PT-JOY-G4 (4D IP Joystick)",
+    "HC-JOY-G4 (Serial Joystick)",
+    "PTZ Control App (Desktop / Mobile)",
+    "CMP (Camera Management Platform)",
+    "Hive Studio",
+    "OBS Plugin / Dock",
+    "General / Multiple PTZOptics Gear"
+  ],
+  "categories": [
+    "IP Address Discovery & Subnet Setup",
+    "NDI / NDI|HX Configuration & Activation",
+    "VISCA over IP / Serial Control & Baud Rate",
+    "Joystick Controller Pairing & Mapping",
+    "Firmware Update & Recovery",
+    "PoE / Power & Network Switch Issues",
+    "USB / UVC / HDMI / SDI Video Output",
+    "RTSP / RTMP / SRT Streaming",
+    "Auto-Tracking & Presets",
+    "Web UI Login / Credentials / Browser Compatibility",
+    "Other Technical Setup"
+  ],
+  "nonSelfServiceKeywords": [
+    "rma request",
+    "warranty repair",
+    "shipping tracking number",
+    "invoice copy",
+    "purchase order",
+    "dealer pricing",
+    "return label"
+  ],
+  "extractionSystemPrompt": "You are a senior PTZOptics Technical Support Engineer analyzing a scrubbed customer support ticket.\nExtract the core technical problem from the ticket.\nDetermine if this ticket is self-serviceable (could be prevented or solved faster with better documentation, troubleshooting guides, or an interactive setup tool) versus non-self-serviceable (purely hardware RMA repair, physical damage, billing/invoicing, or sales quote).\nRespond ONLY with valid JSON matching the requested schema.",
+  "judgeSystemPrompt": "You are a Documentation Gap Auditor for PTZOptics (docs.ptzoptics.com).\nGiven a customer's technical support issue, how support resolved it, and the closest matching sections from our Docusaurus knowledge base:\n1. Decide WHY self-service failed using one of these exact verdicts:\n   - NO_DOC: The docs do not cover this topic or workflow at all.\n   - PARTIAL_COVERAGE: A related doc exists, but it omits the specific edge case, setting, firmware detail, or troubleshooting step needed.\n   - COVERED_FOUND_UNHELPFUL: The doc covers this, but the instructions are confusing, outdated, or failed to resolve the user's roadblock.\n   - COVERED_HARD_TO_FIND: The doc actually answers the question well, meaning the customer couldn't find it (search terms, title, cross-linking).\n   - NEEDS_TOOL: An article alone isn't the best fix; the customer struggled with a diagnostic/calculation/network workflow (e.g., IP subnet mismatch, baud rate/dip switch calculator, firmware compatibility checker) where an interactive tool or utility is needed.\n   - WELL_COVERED: The doc clearly covers this and no documentation change is needed.\n2. Map to a concrete fixType: NEW_ARTICLE, EDIT_ARTICLE, IMPROVE_FINDABILITY, BUILD_TOOL, or NONE.\nRespond ONLY with valid JSON."
+}
