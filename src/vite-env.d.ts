@@ -4,8 +4,10 @@ import {
   AnalysisProgressEvent,
   AnalysisRunSummary,
   AppSettings,
+  DocFileInspection,
   GapRecommendation,
   ScrubResult,
+  TaxonomyAndPromptsConfig,
   TicketAnalysisVerdict,
 } from './types/seer';
 
@@ -34,6 +36,11 @@ export interface SeerWindowApi {
     verdicts: TicketAnalysisVerdict[];
     recommendations: GapRecommendation[];
   }>;
+  inspectDocFile: (relativePath: string) => Promise<DocFileInspection>;
+  openDocInExplorer: (relativePath: string) => Promise<boolean>;
+  getTaxonomy: () => Promise<TaxonomyAndPromptsConfig>;
+  saveTaxonomy: (config: TaxonomyAndPromptsConfig) => Promise<TaxonomyAndPromptsConfig>;
+  resetTaxonomy: () => Promise<TaxonomyAndPromptsConfig>;
   runAnalysis: (params: {
     sourceMode: 'csv' | 'hubspot' | 'sample';
     ticketFilePath?: string;

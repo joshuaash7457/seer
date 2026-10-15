@@ -1,8 +1,8 @@
-import { app, BrowserWindow, dialog, ipcMain, safeStorage } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } from 'electron';
 import path from 'path';
 import { SeerStorage } from './services/storage';
 import { listOllamaModels } from './services/aiProvider';
-import { indexDocusaurusRepo } from './services/docsIndexer';
+import { indexDocusaurusRepo, inspectDocFile } from './services/docsIndexer';
 import { scrubPII } from './services/piiScrubber';
 import {
   fetchHubSpotTickets,
@@ -11,7 +11,7 @@ import {
   parseTicketFile,
 } from './services/ticketIngestor';
 import { runFullGapAnalysis } from './services/analysisPipeline';
-import { AppSettings } from '../src/types/seer';
+import { AppSettings, TaxonomyAndPromptsConfig } from '../src/types/seer';
 
 let mainWindow: BrowserWindow | null = null;
 let storage: SeerStorage;
@@ -147,6 +147,33 @@ function registerIpcHandlers() {
 
   ipcMain.handle('seer:getRunDetails', async (_event, runId: string) => {
     return storage.getRunDetails(runId);
+  });
+
+  ipcMain.handle('seer:inspectDocFile', async (_event, relativePath: string) => {
+    const settings = storage.getSettings();
+    return inspectDocFile(settings.docsRepoPath, relativePath);
+  });
+
+  ipcMain.handle('seer:openDocInExplorer', async (_event, relativePath: string) => {
+    const settings = storage.getSettings();
+    const info = inspectDocFile(settings.docsRepoPath, relativePath);
+    if (info.found && info.absolutePath) {
+      shell.showItemInFolder(info.absolutePath);
+      return true;
+    }
+    return false;
+  });
+
+  ipcMain.handle('seer:getTaxonomy', async () => {
+    return storage.getTaxonomyAndPrompts();
+  });
+
+  ipcMain.handle('seer:saveTaxonomy', async (_event, config: TaxonomyAndPromptsConfig) => {
+    return storage.saveTaxonomyAndPrompts(config);
+  });
+
+  ipcMain.handle('seer:resetTaxonomy', async () => {
+    return storage.resetTaxonomyAndPrompts();
   });
 
   ipcMain.handle(

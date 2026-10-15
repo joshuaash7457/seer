@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { AnalysisProgressEvent, AppSettings } from '../src/types/seer';
+import { AnalysisProgressEvent, AppSettings, TaxonomyAndPromptsConfig } from '../src/types/seer';
 
 contextBridge.exposeInMainWorld('seerApi', {
   getSettings: () => ipcRenderer.invoke('seer:getSettings'),
@@ -14,6 +14,14 @@ contextBridge.exposeInMainWorld('seerApi', {
     ipcRenderer.invoke('seer:previewPiiScrub', rawText, customerName, agentName),
   getRuns: () => ipcRenderer.invoke('seer:getRuns'),
   getRunDetails: (runId: string) => ipcRenderer.invoke('seer:getRunDetails', runId),
+  inspectDocFile: (relativePath: string) =>
+    ipcRenderer.invoke('seer:inspectDocFile', relativePath),
+  openDocInExplorer: (relativePath: string) =>
+    ipcRenderer.invoke('seer:openDocInExplorer', relativePath),
+  getTaxonomy: () => ipcRenderer.invoke('seer:getTaxonomy'),
+  saveTaxonomy: (config: TaxonomyAndPromptsConfig) =>
+    ipcRenderer.invoke('seer:saveTaxonomy', config),
+  resetTaxonomy: () => ipcRenderer.invoke('seer:resetTaxonomy'),
   runAnalysis: (params: {
     sourceMode: 'csv' | 'hubspot' | 'sample';
     ticketFilePath?: string;
