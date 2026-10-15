@@ -198,3 +198,60 @@ export interface AnalysisProgressEvent {
   total: number;
   message: string;
 }
+
+export interface ShippedFixRecord {
+  id: string;
+  recommendationId: string;
+  runIdWhenShipped: string;
+  shippedAt: string;
+  title: string;
+  product: string;
+  category: string;
+  fixType: FixType;
+  targetDocPath: string | null;
+  baselineTicketCount: number;
+  notes?: string;
+}
+
+export interface RecommendationTrendDelta {
+  recommendationId: string;
+  title: string;
+  product: string;
+  category: string;
+  fixType: FixType;
+  targetDocPath: string | null;
+  currentTicketCount: number;
+  previousTicketCount: number;
+  deltaTicketCount: number;
+  trendDirection: 'rising' | 'falling' | 'stable' | 'new';
+}
+
+export interface ShippedFixImpact {
+  shippedFix: ShippedFixRecord;
+  currentTicketCount: number;
+  deltaFromBaseline: number;
+  percentChange: number;
+  status: 'resolved' | 'improved' | 'unchanged' | 'regressed';
+}
+
+export interface TrendsComparisonResult {
+  currentRun: AnalysisRunSummary | null;
+  previousRun: AnalysisRunSummary | null;
+  recommendationDeltas: RecommendationTrendDelta[];
+  resolvedClustersFromPreviousRun: Array<{
+    title: string;
+    product: string;
+    category: string;
+    previousTicketCount: number;
+  }>;
+  shippedFixImpacts: ShippedFixImpact[];
+}
+
+export interface LeadershipReportBundle {
+  runId: string;
+  generatedAt: string;
+  markdown: string;
+  html: string;
+  piiRedactionsAppliedOnExport: number;
+}
+

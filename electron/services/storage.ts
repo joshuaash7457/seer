@@ -8,11 +8,15 @@ import {
   CalibrationExample,
   GapRecommendation,
   GapVerdictType,
+  LeadershipReportBundle,
+  ShippedFixRecord,
   TaxonomyAndPromptsConfig,
   TicketAnalysisVerdict,
+  TrendsComparisonResult,
   VerdictAuditPayload,
 } from '../../src/types/seer';
 import { clusterVerdictsIntoRecommendations } from './analysisPipeline';
+import { computeTrendsComparison, generateLeadershipReport } from './trendsAndReports';
 
 export interface StoredDatabaseState {
   settings: AppSettings;
@@ -20,6 +24,7 @@ export interface StoredDatabaseState {
   verdicts: TicketAnalysisVerdict[];
   recommendations: GapRecommendation[];
   calibrationExamples: CalibrationExample[];
+  shippedFixes: ShippedFixRecord[];
 }
 
 const ALL_VERDICT_TYPES: GapVerdictType[] = [
@@ -101,6 +106,7 @@ export class SeerStorage {
         verdicts: [],
         recommendations: [],
         calibrationExamples: [],
+        shippedFixes: [],
       };
     }
 
@@ -125,6 +131,7 @@ export class SeerStorage {
         calibrationExamples: Array.isArray(raw.calibrationExamples)
           ? raw.calibrationExamples
           : [],
+        shippedFixes: Array.isArray(raw.shippedFixes) ? raw.shippedFixes : [],
       };
     } catch {
       return {
@@ -133,6 +140,7 @@ export class SeerStorage {
         verdicts: [],
         recommendations: [],
         calibrationExamples: [],
+        shippedFixes: [],
       };
     }
   }
@@ -438,6 +446,239 @@ export class SeerStorage {
       agreementRatePercent,
       calibrationExamplesCount: state.calibrationExamples.length,
       byVerdict,
+    };
+  }
+
+  public getShippedFixes(): ShippedFixRecord[] {
+    return this.readState().shippedFixes;
+  }
+
+  public markRecommendationShipped(
+    recommendationId: string,
+    notes?: string
+  ): ShippedFixRecord[] {
+    const state = this.readState();
+    const rec = state.recommendations.find((r) => r.id === recommendationId);
+    if (!rec) {
+      throw new Error(`Recommendation not found: ${recommendationId}`);
+    }
+
+    const fixId = `ship_${rec.targetDocPath || rec.title}`
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, '_');
+
+    const record: ShippedFixRecord = {
+      id: fixId,
+      recommendationId: rec.id,
+      runIdWhenShipped: rec.runId,
+      shippedAt: new Date().toISOString(),
+      title: rec.title,
+      product: rec.product,
+      category: rec.category,
+      fixType: rec.fixType,
+      targetDocPath: rec.targetDocPath,
+      baselineTicketCount: rec.ticketCount,
+      notes: notes || 'Shipped to docs.ptzoptics.com',
+    };
+
+    state.shippedFixes = [
+      record,
+      ...state.shippedFixes.filter((s) => s.id !== fixId),
+    ];
+    this.writeState(state);
+    return state.shippedFixes;
+  }
+
+  public deleteShippedFix(fixId: string): ShippedFixRecord[] {
+    const state = this.readState();
+    state.shippedFixes = state.shippedFixes.filter((s) => s.id !== fixId);
+    this.writeState(state);
+    return state.shippedFixes;
+  }
+
+  public getTrendsAndReport(
+    currentRunId?: string,
+    previousRunId?: string
+  ): {
+    trends: TrendsComparisonResult;
+    report: LeadershipReportBundle | null;
+  } {
+    const state = this.readState();
+    const currentRun =
+      currentRunId && currentRunId !== 'latest'
+        ? state.runs.find((r) => r.id === currentRunId) || null
+        : state.runs[0] || null;
+
+    if (!currentRun) {
+      return {
+        trends: {
+          currentRun: null,
+          previousRun: null,
+          recommendationDeltas: [],
+          resolvedClustersFromPreviousRun: [],
+          shippedFixImpacts: [],
+        },
+        report: null,
+      };
+    }
+
+    const otherRuns = state.runs.filter((r) => r.id !== currentRun.id);
+    const previousRun = previousRunId
+      ? otherRuns.find((r) => r.id === previousRunId) || null
+      : otherRuns[0] || null;
+
+    const currentRecommendations = state.recommendations
+      .filter((r) => r.runId === currentRun.id)
+      .sort((a, b) => b.priorityScore - a.priorityScore);
+
+    const previousRecommendations = previousRun
+      ? state.recommendations.filter((r) => r.runId === previousRun.id)
+      : [];
+
+    const trends = computeTrendsComparison({
+      currentRun,
+      currentRecommendations,
+      previousRun,
+      previousRecommendations,
+      shippedFixes: state.shippedFixes,
+    });
+
+    const accuracy = this.getAccuracyMetrics(currentRun.id);
+    const report = generateLeadershipReport({
+      run: currentRun,
+      recommendations: currentRecommendations,
+      trends,
+      accuracy,
+    });
+
+    return { trends, report };
+  }
+
+  /**
+   * Seeds a realistic prior-week baseline run + a shipped doc record so you can
+   * immediately verify run-over-run rising/falling deltas and Shipped Doc ticket reduction.
+   */
+  public seedPreviousWeekBaselineRun(): {
+    baselineRunId: string;
+    shippedFixes: ShippedFixRecord[];
+  } {
+    const state = this.readState();
+    const baselineRunId = 'run_baseline_prior_week';
+    const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+    const fourteenDaysAgo = new Date(Date.now() - 14 * 86400000).toISOString();
+
+    const baselineRun: AnalysisRunSummary = {
+      id: baselineRunId,
+      startedAt: sevenDaysAgo,
+      completedAt: sevenDaysAgo,
+      sourceType: 'csv',
+      sourceLabel: 'Prior Week Support Batch (Baseline)',
+      dateRangeStart: fourteenDaysAgo.slice(0, 10),
+      dateRangeEnd: sevenDaysAgo.slice(0, 10),
+      totalTickets: 9,
+      selfServiceableTickets: 8,
+      gapTicketsCount: 8,
+      aiProvider: 'opencode-zen',
+      aiModel: 'gpt-5.5',
+      status: 'completed',
+    };
+
+    const baselineRecommendations: GapRecommendation[] = [
+      {
+        id: 'rec_base_superjoy',
+        runId: baselineRunId,
+        title: 'SuperJoy "Configuration Failed" Checklist (Subnet, Port 1259 & ONVIF Credentials)',
+        product: 'SuperJoy (PT-SUPERJOY-G1)',
+        category: 'Joystick Controller Pairing & Mapping',
+        verdict: 'COVERED_FOUND_UNHELPFUL',
+        fixType: 'EDIT_ARTICLE',
+        ticketCount: 1, // Rose from 1 -> 2 in current week (+1 Rising!)
+        priorityScore: 29,
+        targetDocPath:
+          'docs/knowledge-base/joysticks/superjoy/superjoy-configuration-failed.mdx',
+        targetDocTitle: 'Configuration Failed',
+        whyDocsFailed: 'Video-only stub without text steps.',
+        concreteAction: 'Add text checklist to superjoy-configuration-failed.mdx.',
+        exampleQuestions: [
+          'Why does SuperJoy say Configuration Failed when adding a camera?',
+        ],
+        resolutionSummaries: ['Matched subnet and UDP port 1259.'],
+        draftMdxOutline: '## SuperJoy Configuration Failed Checklist',
+        ticketIds: ['HS-89901'],
+      },
+      {
+        id: 'rec_base_subnet',
+        runId: baselineRunId,
+        title: 'Interactive Tool: 192.168.100.88 Cross-Subnet Recovery Wizard',
+        product: 'Move SE',
+        category: 'IP Address Discovery & Subnet Setup',
+        verdict: 'NEEDS_TOOL',
+        fixType: 'BUILD_TOOL',
+        ticketCount: 4, // Dropped from 4 -> 2 in current week (-2 Falling!)
+        priorityScore: 119,
+        targetDocPath: 'docs/technical-docs/software/gen-3-web-ui/network-settings.mdx',
+        targetDocTitle: 'Network Settings',
+        whyDocsFailed: 'Users struggle with Windows NIC subnet changes.',
+        concreteAction: 'Build 192.168.100.88 recovery wizard.',
+        exampleQuestions: ['How do I log into 192.168.100.88 from a 192.168.1.x network?'],
+        resolutionSummaries: ['Used temporary secondary IP to switch camera to DHCP.'],
+        draftMdxOutline: '## 192.168.100.88 Wizard',
+        ticketIds: ['HS-89902', 'HS-89903', 'HS-89904', 'HS-89905'],
+      },
+      {
+        id: 'rec_base_poe_shipped',
+        runId: baselineRunId,
+        title: 'Move 4K PoE+ (802.3at) vs Standard PoE (802.3af) Reboot Loop Guide',
+        product: 'Move 4K',
+        category: 'PoE / Power & Network Switch Issues',
+        verdict: 'PARTIAL_COVERAGE',
+        fixType: 'EDIT_ARTICLE',
+        ticketCount: 3, // Dropped from 3 -> 0 after shipping doc!
+        priorityScore: 82,
+        targetDocPath: 'docs/technical-docs/troubleshooting/cameras.md',
+        targetDocTitle: 'Camera Troubleshooting',
+        whyDocsFailed: 'Missing 802.3at PoE+ wattage requirement warning when auto-tracking is active.',
+        concreteAction: 'Added PoE+ 802.3at (25.5W) requirement callout to Camera Troubleshooting.',
+        exampleQuestions: [
+          'Why does my Move 4K reboot when panning and zooming on an 802.3af PoE switch?',
+        ],
+        resolutionSummaries: ['Switched customer from 802.3af (15.4W) port to 802.3at PoE+ (30W) port.'],
+        draftMdxOutline: '## PoE+ Power Requirements',
+        ticketIds: ['HS-89910', 'HS-89911', 'HS-89912'],
+      },
+    ];
+
+    // Insert baseline run after current latest run
+    const filteredRuns = state.runs.filter((r) => r.id !== baselineRunId);
+    state.runs = [...filteredRuns, baselineRun];
+    state.recommendations = [
+      ...state.recommendations.filter((r) => r.runId !== baselineRunId),
+      ...baselineRecommendations,
+    ];
+
+    const shippedPoEFix: ShippedFixRecord = {
+      id: 'ship_move_4k_poe_plus',
+      recommendationId: 'rec_base_poe_shipped',
+      runIdWhenShipped: baselineRunId,
+      shippedAt: sevenDaysAgo,
+      title: 'Move 4K PoE+ (802.3at) vs Standard PoE (802.3af) Reboot Loop Guide',
+      product: 'Move 4K',
+      category: 'PoE / Power & Network Switch Issues',
+      fixType: 'EDIT_ARTICLE',
+      targetDocPath: 'docs/technical-docs/troubleshooting/cameras.md',
+      baselineTicketCount: 3,
+      notes: 'Shipped 802.3at PoE+ callout table last week — reduced tickets from 3 to 0!',
+    };
+
+    state.shippedFixes = [
+      shippedPoEFix,
+      ...state.shippedFixes.filter((s) => s.id !== shippedPoEFix.id),
+    ];
+
+    this.writeState(state);
+    return {
+      baselineRunId,
+      shippedFixes: state.shippedFixes,
     };
   }
 }
