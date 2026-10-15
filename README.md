@@ -26,22 +26,29 @@ Seer is a Windows desktop application that analyzes PTZOptics customer support t
 
 ## Installation & Running on Windows
 
-### Prerequisites
-- Node.js 20+ installed on Windows
-- Local clone of the PTZOptics Docusaurus repository (auto-detected if located at `C:\Users\<YourUser>\online-docs`)
+### Option A: Windows Installer (`.exe`)
+1. Run the built Windows installer at:
+   ```text
+   C:\Users\JoshuaAsh\Seer\release\Seer Setup 0.1.0.exe
+   ```
+   *(Or launch the portable executable directly at `C:\Users\JoshuaAsh\Seer\release\win-unpacked\Seer.exe`.)*
+2. The installer creates a **Seer** shortcut on your Desktop and Start Menu.
+3. To rebuild the Windows installer after code changes:
+   ```powershell
+   node ./node_modules/vite/bin/vite.js build; node ./node_modules/esbuild/bin/esbuild electron/main.ts electron/preload.ts --bundle --platform=node --external:electron --outdir=dist-electron --out-extension:.js=.cjs; node ./node_modules/electron-builder/cli.js --win --x64
+   ```
 
-### 1. Install Dependencies
-```powershell
-npm install
-```
+### Option B: Run from Source (Development)
+1. Install dependencies:
+   ```powershell
+   npm install
+   ```
+2. Build & launch:
+   ```powershell
+   node ./node_modules/vite/bin/vite.js build; node ./node_modules/esbuild/bin/esbuild electron/main.ts electron/preload.ts --bundle --platform=node --external:electron --outdir=dist-electron --out-extension:.js=.cjs; node ./node_modules/electron/cli.js .
+   ```
 
-### 2. Launch the Desktop App
-```powershell
-node ./node_modules/vite/bin/vite.js build; node ./node_modules/esbuild/bin/esbuild electron/main.ts electron/preload.ts --bundle --platform=node --external:electron --outdir=dist-electron --out-extension:.js=.cjs; node ./node_modules/electron/cli.js .
-```
-*(Or `npm start` if `.cmd` shims are enabled on your machine.)*
-
-### 3. Run Automated Tests
+### Run Automated Tests
 ```powershell
 node ./node_modules/vitest/vitest.mjs run
 ```

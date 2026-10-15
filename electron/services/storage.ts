@@ -21,6 +21,7 @@ export class SeerStorage {
   private dbFilePath: string;
   private secretsFilePath: string;
   private taxonomyFilePath: string;
+  private defaultTaxonomyPath: string;
   private encryptFn?: (plainText: string) => Buffer;
   private decryptFn?: (cipherBuf: Buffer) => string;
 
@@ -41,16 +42,16 @@ export class SeerStorage {
     this.dbFilePath = path.join(this.dataDir, 'seer-store.json');
     this.secretsFilePath = path.join(this.dataDir, 'seer-secrets.bin.json');
     this.taxonomyFilePath = path.join(this.dataDir, 'taxonomy-and-prompts.json');
+    this.defaultTaxonomyPath =
+      options?.defaultTaxonomyPath ||
+      path.resolve(process.cwd(), 'config', 'taxonomy-and-prompts.json');
     this.encryptFn = options?.encryptFn;
     this.decryptFn = options?.decryptFn;
 
     // Seed editable taxonomy & prompts if not yet in user data folder
     if (!fs.existsSync(this.taxonomyFilePath)) {
-      const repoConfigPath =
-        options?.defaultTaxonomyPath ||
-        path.resolve(process.cwd(), 'config', 'taxonomy-and-prompts.json');
-      if (fs.existsSync(repoConfigPath)) {
-        fs.copyFileSync(repoConfigPath, this.taxonomyFilePath);
+      if (fs.existsSync(this.defaultTaxonomyPath)) {
+        fs.copyFileSync(this.defaultTaxonomyPath, this.taxonomyFilePath);
       }
     }
   }
@@ -192,8 +193,7 @@ export class SeerStorage {
         // Fall through
       }
     }
-    const fallbackPath = path.resolve(process.cwd(), 'config', 'taxonomy-and-prompts.json');
-    return JSON.parse(fs.readFileSync(fallbackPath, 'utf-8')) as TaxonomyAndPromptsConfig;
+    return JSON.parse(fs.readFileSync(this.defaultTaxonomyPath, 'utf-8')) as TaxonomyAndPromptsConfig;
   }
 
   public saveTaxonomyAndPrompts(config: TaxonomyAndPromptsConfig): TaxonomyAndPromptsConfig {

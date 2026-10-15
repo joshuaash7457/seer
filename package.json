@@ -10,8 +10,38 @@
     "build:electron": "node ./node_modules/esbuild/bin/esbuild electron/main.ts electron/preload.ts --bundle --platform=node --external:electron --outdir=dist-electron --out-extension:.js=.cjs",
     "build": "node ./node_modules/vite/bin/vite.js build && node ./node_modules/esbuild/bin/esbuild electron/main.ts electron/preload.ts --bundle --platform=node --external:electron --outdir=dist-electron --out-extension:.js=.cjs",
     "start": "node ./node_modules/vite/bin/vite.js build && node ./node_modules/esbuild/bin/esbuild electron/main.ts electron/preload.ts --bundle --platform=node --external:electron --outdir=dist-electron --out-extension:.js=.cjs && node ./node_modules/electron/cli.js .",
+    "dist:win": "node ./node_modules/vite/bin/vite.js build && node ./node_modules/esbuild/bin/esbuild electron/main.ts electron/preload.ts --bundle --platform=node --external:electron --outdir=dist-electron --out-extension:.js=.cjs && node ./node_modules/electron-builder/cli.js --win --x64",
     "test": "node ./node_modules/vitest/vitest.mjs run",
     "typecheck": "node ./node_modules/typescript/bin/tsc --noEmit"
+  },
+  "author": "PTZOptics",
+  "build": {
+    "appId": "com.ptzoptics.seer",
+    "productName": "Seer",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "config/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Seer"
+    }
   },
   "dependencies": {
     "csv-parse": "^5.5.6",

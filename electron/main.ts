@@ -19,6 +19,7 @@ let storage: SeerStorage;
 function initStorage() {
   storage = new SeerStorage({
     dataDir: path.join(app.getPath('userData'), 'SeerData'),
+    defaultTaxonomyPath: path.join(app.getAppPath(), 'config', 'taxonomy-and-prompts.json'),
     encryptFn: (plainText: string) =>
       safeStorage.isEncryptionAvailable()
         ? safeStorage.encryptString(plainText)
