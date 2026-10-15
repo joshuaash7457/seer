@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import {
   AnalysisProgressEvent,
   AnalysisRunSummary,
+  CalibrationExample,
   DocChunk,
   FixType,
   GapRecommendation,
@@ -12,6 +13,21 @@ import {
 } from '../../src/types/seer';
 import { AIConfig, generateJsonCompletion } from './aiProvider';
 import { indexDocusaurusRepo, searchDocChunks } from './docsIndexer';
+
+export function formatCalibrationFewShotBlock(examples: CalibrationExample[]): string {
+  if (!examples || examples.length === 0) return '';
+  const selected = examples.slice(0, 8);
+  const lines = selected.map(
+    (ex, idx) =>
+      `Example ${idx + 1} (${ex.auditType.toUpperCase()} by Human Auditor):\n` +
+      `- Product: ${ex.product} | Category: ${ex.category}\n` +
+      `- Customer Question: "${ex.customerQuestion}"\n` +
+      `- Matched Doc: ${ex.matchedDocPath || 'None'}\n` +
+      `- Verified Verdict: ${ex.verifiedVerdict} (Fix Type: ${ex.verifiedFixType})\n` +
+      `- Auditor Note: ${ex.humanNote}`
+  );
+  return `\n\nHuman-Verified Calibration Examples (Follow these precedents closely):\n${lines.join('\n\n')}`;
+}
 
 interface LlmExtractionResult {
   isSelfServiceable: boolean;
@@ -269,7 +285,8 @@ export async function analyzeSingleTicket(
   docChunks: DocChunk[],
   taxonomy: TaxonomyAndPromptsConfig,
   aiConfig: AIConfig,
-  useLlm: boolean
+  useLlm: boolean,
+  calibrationExamples: CalibrationExample[] = []
 ): Promise<TicketAnalysisVerdict> {
   let extraction: LlmExtractionResult | null = null;
   let judge: LlmJudgeResult | null = null;
@@ -345,6 +362,7 @@ Return JSON with this exact shape:
                 .join('\n\n---\n\n')
             : 'No matching documentation chunks found in repository.';
 
+        const fewShotSection = formatCalibrationFewShotBlock(calibrationExamples);
         const judgeUserPrompt = `
 Ticket Product: ${extraction.product}
 Ticket Category: ${extraction.category}
@@ -352,7 +370,7 @@ Customer Question: ${extraction.customerQuestion}
 Support Resolution: ${extraction.resolutionSummary}
 
 Closest Matching Docusaurus Docs:
-${formattedDocs}
+${formattedDocs}${fewShotSection}
 
 Return JSON with this exact shape:
 {
@@ -381,6 +399,24 @@ Return JSON with this exact shape:
     const fallback = fallbackExtractAndJudge(ticket, matchedChunks, taxonomy);
     extraction = extraction || fallback.extraction;
     judge = judge || fallback.judge;
+
+    // Apply human calibration precedent if a matching ticket or question was previously corrected
+    const matchingCal = calibrationExamples.find(
+      (c) =>
+        c.auditType === 'corrected' &&
+        (c.ticketExternalId === ticket.externalId ||
+          c.customerQuestion.toLowerCase() === extraction!.customerQuestion.toLowerCase())
+    );
+    if (matchingCal && judge) {
+      judge.verdict = matchingCal.verifiedVerdict;
+      judge.fixType = matchingCal.verifiedFixType;
+      if (matchingCal.matchedDocPath !== undefined) {
+        judge.matchedDocPath = matchingCal.matchedDocPath;
+      }
+      if (matchingCal.humanNote) {
+        judge.gapReasoning = `${judge.gapReasoning} [Calibrated via Spot-Check: ${matchingCal.humanNote}]`;
+      }
+    }
   }
 
   const fixType = judge.fixType || mapVerdictToDefaultFixType(judge.verdict);
@@ -399,6 +435,8 @@ Return JSON with this exact shape:
     resolutionSummary: extraction.resolutionSummary || '',
     verdict: judge.verdict,
     fixType,
+    originalVerdict: judge.verdict,
+    originalFixType: fixType,
     matchedDocPath: judge.matchedDocPath,
     matchedDocTitle: judge.matchedDocTitle,
     confidence: typeof judge.confidence === 'number' ? judge.confidence : 0.85,
@@ -408,6 +446,7 @@ Return JSON with this exact shape:
     scrubbedSnippet: ticket.scrubbedBody.slice(0, 600),
     humanAudit: null,
     humanCorrectionNote: null,
+    auditedAt: null,
   };
 }
 
@@ -532,6 +571,7 @@ export async function runFullGapAnalysis(options: {
   docsRepoPath: string;
   taxonomy: TaxonomyAndPromptsConfig;
   aiConfig: AIConfig;
+  calibrationExamples?: CalibrationExample[];
   useLlm?: boolean;
   onProgress?: (event: AnalysisProgressEvent) => void;
 }): Promise<{
@@ -555,7 +595,7 @@ export async function runFullGapAnalysis(options: {
   const docChunks = indexDocusaurusRepo(options.docsRepoPath);
   emit('indexing_docs', 1, 1, `Indexed ${docChunks.length} documentation sections.`);
 
-  // Check if AI provider is reachable so we don't stall on every ticket if Ollama isn't running
+  // Check if AI provider is reachable so we don't stall on every ticket if offline
   let llmAvailable = options.useLlm !== false;
   if (llmAvailable && options.aiConfig.provider === 'ollama') {
     try {
@@ -563,6 +603,13 @@ export async function runFullGapAnalysis(options: {
       const ping = await fetch(`${cleanUrl}/api/tags`, { signal: AbortSignal.timeout(2500) });
       if (!ping.ok) llmAvailable = false;
     } catch {
+      llmAvailable = false;
+    }
+  } else if (llmAvailable && options.aiConfig.provider === 'opencode-zen') {
+    const zenModel = (options.aiConfig.openCodeZenModel || options.aiConfig.cloudModel || '').toLowerCase();
+    const isFreeZenModel = zenModel.endsWith('-free') || zenModel === 'big-pickle';
+    const hasZenKey = Boolean(options.aiConfig.cloudApiKey || process.env.OPENCODE_API_KEY);
+    if (!hasZenKey && !isFreeZenModel) {
       llmAvailable = false;
     }
   } else if (llmAvailable && !options.aiConfig.cloudApiKey) {
@@ -586,7 +633,8 @@ export async function runFullGapAnalysis(options: {
       docChunks,
       options.taxonomy,
       options.aiConfig,
-      llmAvailable
+      llmAvailable,
+      options.calibrationExamples || []
     );
     verdicts.push(verdict);
   }
@@ -599,10 +647,14 @@ export async function runFullGapAnalysis(options: {
     (v) => v.isSelfServiceable && v.verdict !== 'WELL_COVERED'
   ).length;
 
-  const modelLabel =
+  const activeModelName =
     options.aiConfig.provider === 'ollama'
-      ? `${options.aiConfig.ollamaModel}${llmAvailable ? '' : ' (Local Heuristic Fallback)'}`
-      : `${options.aiConfig.cloudModel}${llmAvailable ? '' : ' (Local Heuristic Fallback)'}`;
+      ? options.aiConfig.ollamaModel
+      : options.aiConfig.provider === 'opencode-zen'
+      ? options.aiConfig.openCodeZenModel || options.aiConfig.cloudModel || 'gpt-5.5'
+      : options.aiConfig.cloudModel;
+
+  const modelLabel = `${activeModelName}${llmAvailable ? '' : ' (Local Heuristic Fallback)'}`;
 
   const run: AnalysisRunSummary = {
     id: runId,

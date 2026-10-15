@@ -1,4 +1,4 @@
-export type AIProviderType = 'ollama' | 'openai' | 'anthropic' | 'gemini';
+export type AIProviderType = 'opencode-zen' | 'ollama' | 'openai' | 'anthropic' | 'gemini';
 
 export type GapVerdictType =
   | 'NO_DOC'
@@ -20,6 +20,8 @@ export interface AppSettings {
   aiProvider: AIProviderType;
   ollamaBaseUrl: string;
   ollamaModel: string;
+  openCodeZenBaseUrl: string;
+  openCodeZenModel: string;
   cloudModel: string;
   hasCloudApiKey: boolean;
   hasHubSpotToken: boolean;
@@ -97,8 +99,49 @@ export interface TicketAnalysisVerdict {
   recommendedAction: string;
   suggestedTitleOrSection: string;
   scrubbedSnippet: string;
-  humanAudit?: 'approved' | 'rejected' | null;
+  originalVerdict?: GapVerdictType;
+  originalFixType?: FixType;
+  humanAudit?: 'approved' | 'corrected' | null;
   humanCorrectionNote?: string | null;
+  auditedAt?: string | null;
+}
+
+export interface CalibrationExample {
+  id: string;
+  createdAt: string;
+  ticketExternalId: string;
+  product: string;
+  category: string;
+  customerQuestion: string;
+  matchedDocPath: string | null;
+  seerOriginalVerdict: GapVerdictType;
+  verifiedVerdict: GapVerdictType;
+  verifiedFixType: FixType;
+  humanNote: string;
+  auditType: 'approved' | 'corrected';
+}
+
+export interface VerdictAuditPayload {
+  verdictId: string;
+  auditStatus: 'approved' | 'corrected';
+  correctedVerdict?: GapVerdictType;
+  correctedFixType?: FixType;
+  correctedDocPath?: string | null;
+  correctedRecommendedAction?: string;
+  humanNote?: string;
+}
+
+export interface AccuracyMetrics {
+  totalVerdicts: number;
+  auditedCount: number;
+  approvedCount: number;
+  correctedCount: number;
+  agreementRatePercent: number | null;
+  calibrationExamplesCount: number;
+  byVerdict: Record<
+    GapVerdictType,
+    { total: number; audited: number; approved: number; corrected: number }
+  >;
 }
 
 export interface GapRecommendation {
