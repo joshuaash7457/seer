@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
+  Award,
   BookOpen,
   CheckCircle2,
   Copy,
@@ -20,15 +21,16 @@ import {
   Settings,
   ShieldCheck,
   Sliders,
-  Sparkles,
   Trash2,
   Wrench,
   X,
 } from 'lucide-react';
 import {
+  AccuracyMetrics,
   AnalysisProgressEvent,
   AnalysisRunSummary,
   AppSettings,
+  CalibrationExample,
   DocFileInspection,
   FixType,
   GapRecommendation,
@@ -36,9 +38,12 @@ import {
   ScrubResult,
   TaxonomyAndPromptsConfig,
   TicketAnalysisVerdict,
+  VerdictAuditPayload,
 } from './types/seer';
+import { SeerLogo } from './components/SeerLogo';
+import { SpotCheckPanel } from './components/SpotCheckPanel';
 
-type NavTab = 'dashboard' | 'taxonomy' | 'pii_lab' | 'settings';
+type NavTab = 'dashboard' | 'spot_check' | 'taxonomy' | 'pii_lab' | 'settings';
 type ResultsSubTab = 'recommendations' | 'verdicts';
 
 function formatFixBadge(fixType: FixType) {
@@ -110,10 +115,12 @@ export default function App() {
   // Settings state
   const [settings, setSettings] = useState<AppSettings>({
     docsRepoPath: '',
-    aiProvider: 'ollama',
+    aiProvider: 'opencode-zen',
     ollamaBaseUrl: 'http://localhost:11434',
     ollamaModel: 'llama3.1:8b',
-    cloudModel: 'gpt-4o-mini',
+    openCodeZenBaseUrl: 'https://opencode.ai/zen/v1',
+    openCodeZenModel: 'gpt-5.5',
+    cloudModel: 'gpt-5.5',
     hasCloudApiKey: false,
     hasHubSpotToken: false,
     hubSpotPipelineFilter: '',
@@ -128,6 +135,24 @@ export default function App() {
   } | null>(null);
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
   const [ollamaTestError, setOllamaTestError] = useState<string | null>(null);
+  const [zenModels, setZenModels] = useState<string[]>([
+    'gpt-5.5',
+    'gpt-5.4-mini',
+    'gpt-5.3-codex',
+    'claude-sonnet-4-6',
+    'claude-opus-4-8',
+    'claude-haiku-4-5',
+    'gemini-3.5-flash',
+    'gemini-3.1-pro',
+    'deepseek-v4.1-flash',
+    'glm-5.3',
+    'kimi-k2.6',
+    'qwen3.6-plus',
+    'big-pickle',
+    'nemotron-3-ultra-free',
+    'mimo-v2.5-free',
+  ]);
+  const [zenFetchStatus, setZenFetchStatus] = useState<string | null>(null);
 
   // Run configuration state
   const [sourceMode, setSourceMode] = useState<'sample' | 'csv' | 'hubspot'>('sample');
@@ -165,6 +190,10 @@ export default function App() {
   const [newKeywordInput, setNewKeywordInput] = useState('');
   const [taxonomySaveMessage, setTaxonomySaveMessage] = useState<string | null>(null);
 
+  // Phase 3: Accuracy Calibration & Spot-Check state
+  const [accuracyMetrics, setAccuracyMetrics] = useState<AccuracyMetrics | null>(null);
+  const [calibrationExamples, setCalibrationExamples] = useState<CalibrationExample[]>([]);
+
   // PII Lab state
   const [piiInputText, setPiiInputText] = useState(DEFAULT_PII_SAMPLE);
   const [piiCustomerName, setPiiCustomerName] = useState('Pastor David Miller');
@@ -182,18 +211,21 @@ export default function App() {
       }
     });
 
-    window.seerApi.getTaxonomy().then((t) => {
-      setTaxonomy(t);
-    });
+    window.seerApi.getTaxonomy().then(setTaxonomy);
+    window.seerApi.getCalibrationExamples().then(setCalibrationExamples);
 
     window.seerApi.getRuns().then((loadedRuns) => {
       setRuns(loadedRuns);
       if (loadedRuns.length > 0) {
-        window.seerApi.getRunDetails(loadedRuns[0].id).then((details) => {
+        const latestId = loadedRuns[0].id;
+        window.seerApi.getRunDetails(latestId).then((details) => {
           setCurrentRun(details.run);
           setRecommendations(details.recommendations);
           setVerdicts(details.verdicts);
         });
+        window.seerApi.getAccuracyMetrics(latestId).then(setAccuracyMetrics);
+      } else {
+        window.seerApi.getAccuracyMetrics().then(setAccuracyMetrics);
       }
     });
 
@@ -285,6 +317,16 @@ export default function App() {
     }
   };
 
+  const handleFetchZenModels = async () => {
+    setZenFetchStatus('Fetching live OpenCode Zen catalog...');
+    const res = await window.seerApi.listOpenCodeZenModels(settings.openCodeZenBaseUrl);
+    if (res.models && res.models.length > 0) {
+      setZenModels(res.models);
+      setZenFetchStatus(`Loaded ${res.models.length} OpenCode Zen models.`);
+      setTimeout(() => setZenFetchStatus(null), 3500);
+    }
+  };
+
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     const updated = await window.seerApi.saveSettings({
@@ -331,6 +373,8 @@ export default function App() {
       setVerdicts(result.verdicts);
       const updatedRuns = await window.seerApi.getRuns();
       setRuns(updatedRuns);
+      const metrics = await window.seerApi.getAccuracyMetrics(result.run.id);
+      setAccuracyMetrics(metrics);
     } catch (err: unknown) {
       setRunError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -344,6 +388,25 @@ export default function App() {
     setRecommendations(details.recommendations);
     setVerdicts(details.verdicts);
     setSelectedRec(null);
+    const metrics = await window.seerApi.getAccuracyMetrics(runId);
+    setAccuracyMetrics(metrics);
+  };
+
+  const handleSubmitVerdictAudit = async (payload: VerdictAuditPayload) => {
+    const res = await window.seerApi.submitVerdictAudit(payload);
+    setVerdicts((prev) => prev.map((v) => (v.id === res.verdict.id ? res.verdict : v)));
+    setRecommendations(res.recommendations);
+    setAccuracyMetrics(res.metrics);
+    setCalibrationExamples(res.calibrationExamples);
+  };
+
+  const handleDeleteCalibration = async (id: string) => {
+    const updated = await window.seerApi.deleteCalibrationExample(id);
+    setCalibrationExamples(updated);
+    if (currentRun) {
+      const metrics = await window.seerApi.getAccuracyMetrics(currentRun.id);
+      setAccuracyMetrics(metrics);
+    }
   };
 
   const handleSaveTaxonomy = async () => {
@@ -376,16 +439,21 @@ export default function App() {
     <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100">
       {/* Top Header */}
       <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur px-6 py-3.5 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-sky-500/20 border border-sky-400/40 flex items-center justify-center text-sky-400">
-            <Sparkles className="w-5 h-5" />
-          </div>
+        <div className="flex items-center gap-3.5">
+          <SeerLogo className="w-11 h-11 rounded-xl shadow-md shrink-0" />
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-lg font-bold tracking-tight text-white">Seer</h1>
               <span className="text-xs px-2 py-0.5 rounded-full bg-sky-500/15 text-sky-300 border border-sky-500/30 font-medium">
                 PTZOptics KB Gap Analyzer
               </span>
+              {accuracyMetrics?.agreementRatePercent !== null &&
+                accuracyMetrics?.agreementRatePercent !== undefined && (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-medium">
+                    Trust Score: {accuracyMetrics.agreementRatePercent}% ({accuracyMetrics.auditedCount}{' '}
+                    audited)
+                  </span>
+                )}
             </div>
             <p className="text-xs text-slate-400">
               Where are customers contacting support because our self-service docs didn't help them?
@@ -404,7 +472,18 @@ export default function App() {
             }`}
           >
             <Layers className="w-4 h-4" />
-            Gap Analysis & Evidence
+            Gap Analysis
+          </button>
+          <button
+            onClick={() => setActiveTab('spot_check')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium transition ${
+              activeTab === 'spot_check'
+                ? 'bg-sky-500 text-slate-950 shadow-sm'
+                : 'text-slate-300 hover:bg-slate-800'
+            }`}
+          >
+            <Award className="w-4 h-4" />
+            Spot-Check & Trust Score
           </button>
           <button
             onClick={() => setActiveTab('taxonomy')}
@@ -426,7 +505,7 @@ export default function App() {
             }`}
           >
             <ShieldCheck className="w-4 h-4" />
-            PII Scrubber Verifier
+            PII Verifier
           </button>
           <button
             onClick={() => setActiveTab('settings')}
@@ -437,7 +516,7 @@ export default function App() {
             }`}
           >
             <Settings className="w-4 h-4" />
-            Settings & Connections
+            Settings
           </button>
         </nav>
       </header>
@@ -839,6 +918,16 @@ export default function App() {
                                   {formatVerdictLabel(v.verdict)} → {badge.label}
                                 </span>
                               )}
+                              {v.humanAudit === 'approved' && (
+                                <span className="text-xs px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300">
+                                  ✓ Audited: Approved
+                                </span>
+                              )}
+                              {v.humanAudit === 'corrected' && (
+                                <span className="text-xs px-2 py-0.5 rounded bg-amber-500/20 text-amber-300">
+                                  ✎ Audited: Corrected
+                                </span>
+                              )}
                             </div>
                             <span className="text-xs text-slate-400">
                               Confidence: {Math.round(v.confidence * 100)}%
@@ -858,15 +947,6 @@ export default function App() {
                             </div>
                           )}
                           <div className="text-xs text-slate-400">{v.gapReasoning}</div>
-
-                          <details className="text-xs text-slate-400 pt-1">
-                            <summary className="cursor-pointer hover:text-slate-200">
-                              View PII-Scrubbed Ticket Excerpt
-                            </summary>
-                            <pre className="mt-2 p-3 rounded bg-slate-950 border border-slate-800 whitespace-pre-wrap font-mono text-slate-300 text-[11px]">
-                              {v.scrubbedSnippet}
-                            </pre>
-                          </details>
                         </div>
                       );
                     })}
@@ -876,7 +956,7 @@ export default function App() {
             ) : (
               /* Empty State before first run */
               <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-12 text-center space-y-3">
-                <Sparkles className="w-10 h-10 text-sky-400 mx-auto" />
+                <SeerLogo className="w-16 h-16 mx-auto rounded-2xl shadow-lg" />
                 <h3 className="text-lg font-semibold text-white">
                   Ready to Run Your First Support Gap Analysis
                 </h3>
@@ -888,6 +968,17 @@ export default function App() {
               </div>
             )}
           </>
+        )}
+
+        {/* Phase 3: Spot-Check & Trust Score Tab */}
+        {activeTab === 'spot_check' && (
+          <SpotCheckPanel
+            verdicts={verdicts}
+            metrics={accuracyMetrics}
+            calibrationExamples={calibrationExamples}
+            onSubmitAudit={handleSubmitVerdictAudit}
+            onDeleteCalibration={handleDeleteCalibration}
+          />
         )}
 
         {/* Phase 2: In-App Taxonomy & Prompts Editor Tab */}
@@ -1265,7 +1356,7 @@ export default function App() {
             <div className="space-y-4 pt-4 border-t border-slate-800">
               <label className="block text-sm font-medium text-slate-200 flex items-center gap-2">
                 <Cpu className="w-4 h-4 text-sky-400" />
-                2. AI Compute Provider (Local Ollama or Cloud API)
+                2. AI Compute Provider (Company OpenCode Zen, Local Ollama, or Cloud API)
               </label>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1281,14 +1372,44 @@ export default function App() {
                     }
                     className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-slate-100"
                   >
+                    <option value="opencode-zen">
+                      Company OpenCode Zen (opencode.ai/zen/v1 — PII scrubbed)
+                    </option>
                     <option value="ollama">Local / Homelab Ollama (Zero data leaves LAN)</option>
-                    <option value="openai">OpenAI API (PII scrubbed before send)</option>
-                    <option value="anthropic">Anthropic Claude API (PII scrubbed before send)</option>
-                    <option value="gemini">Google Gemini API (PII scrubbed before send)</option>
+                    <option value="openai">OpenAI Direct API (PII scrubbed)</option>
+                    <option value="anthropic">Anthropic Claude Direct API (PII scrubbed)</option>
+                    <option value="gemini">Google Gemini Direct API (PII scrubbed)</option>
                   </select>
                 </div>
 
-                {settings.aiProvider === 'ollama' ? (
+                {settings.aiProvider === 'opencode-zen' ? (
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">
+                      OpenCode Zen Base URL
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={settings.openCodeZenBaseUrl || 'https://opencode.ai/zen/v1'}
+                        onChange={(e) =>
+                          setSettings((prev) => ({
+                            ...prev,
+                            openCodeZenBaseUrl: e.target.value,
+                          }))
+                        }
+                        placeholder="https://opencode.ai/zen/v1"
+                        className="flex-1 rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-slate-100"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleFetchZenModels}
+                        className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs shrink-0"
+                      >
+                        Fetch Zen Models
+                      </button>
+                    </div>
+                  </div>
+                ) : settings.aiProvider === 'ollama' ? (
                   <div>
                     <label className="block text-xs text-slate-400 mb-1">Ollama Server URL</label>
                     <div className="flex gap-2">
@@ -1326,7 +1447,74 @@ export default function App() {
                 )}
               </div>
 
-              {settings.aiProvider === 'ollama' ? (
+              {settings.aiProvider === 'opencode-zen' && (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">
+                      OpenCode Zen Model (auto-routes `/responses`, `/messages`, `/models`, or `/chat/completions`)
+                    </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <select
+                        value={settings.openCodeZenModel || 'gpt-5.5'}
+                        onChange={(e) =>
+                          setSettings((prev) => ({
+                            ...prev,
+                            openCodeZenModel: e.target.value,
+                            cloudModel: e.target.value,
+                          }))
+                        }
+                        className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-slate-100"
+                      >
+                        {zenModels.map((m) => (
+                          <option key={m} value={m}>
+                            opencode/{m}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        type="text"
+                        value={settings.openCodeZenModel || 'gpt-5.5'}
+                        onChange={(e) =>
+                          setSettings((prev) => ({
+                            ...prev,
+                            openCodeZenModel: e.target.value,
+                            cloudModel: e.target.value,
+                          }))
+                        }
+                        placeholder="Or type any Zen model ID (e.g., gpt-5.5, claude-sonnet-4-6)..."
+                        className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-slate-100 font-mono"
+                      />
+                    </div>
+                    {zenFetchStatus && (
+                      <p className="text-xs text-sky-400 mt-1">{zenFetchStatus}</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">
+                      OpenCode Zen API Key{' '}
+                      {settings.hasCloudApiKey && (
+                        <span className="text-emerald-400">
+                          (Encrypted key or OPENCODE_API_KEY active)
+                        </span>
+                      )}
+                    </label>
+                    <input
+                      type="password"
+                      value={cloudApiKeyInput}
+                      onChange={(e) => setCloudApiKeyInput(e.target.value)}
+                      placeholder={
+                        settings.hasCloudApiKey
+                          ? '•••••••••••••••• (Leave blank to keep existing key)'
+                          : 'Paste your company OpenCode Zen API key...'
+                      }
+                      className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-slate-100"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {settings.aiProvider === 'ollama' && (
                 <div>
                   <label className="block text-xs text-slate-400 mb-1">Ollama Model</label>
                   {ollamaModels.length > 0 ? (
@@ -1361,7 +1549,9 @@ export default function App() {
                     </p>
                   )}
                 </div>
-              ) : (
+              )}
+
+              {settings.aiProvider !== 'ollama' && settings.aiProvider !== 'opencode-zen' && (
                 <div>
                   <label className="block text-xs text-slate-400 mb-1">
                     Cloud API Key{' '}

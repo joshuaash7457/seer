@@ -1,7 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } from 'electron';
 import path from 'path';
 import { SeerStorage } from './services/storage';
-import { listOllamaModels } from './services/aiProvider';
+import { listOllamaModels, listOpenCodeZenModels } from './services/aiProvider';
 import { indexDocusaurusRepo, inspectDocFile } from './services/docsIndexer';
 import { scrubPII } from './services/piiScrubber';
 import {
@@ -11,7 +11,7 @@ import {
   parseTicketFile,
 } from './services/ticketIngestor';
 import { runFullGapAnalysis } from './services/analysisPipeline';
-import { AppSettings, TaxonomyAndPromptsConfig } from '../src/types/seer';
+import { AppSettings, TaxonomyAndPromptsConfig, VerdictAuditPayload } from '../src/types/seer';
 
 let mainWindow: BrowserWindow | null = null;
 let storage: SeerStorage;
@@ -32,6 +32,7 @@ function initStorage() {
 }
 
 function createWindow() {
+  const iconPath = path.join(app.getAppPath(), 'build', 'icon.ico');
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -39,6 +40,7 @@ function createWindow() {
     minHeight: 700,
     backgroundColor: '#020617',
     title: 'Seer — PTZOptics Support Knowledge Gap Analyzer',
+    icon: iconPath,
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
@@ -120,6 +122,16 @@ function registerIpcHandlers() {
     return { ok: true, models };
   });
 
+  ipcMain.handle('seer:listOpenCodeZenModels', async (_event, baseUrl?: string) => {
+    const settings = storage.getSettings();
+    const apiKey = storage.getSecret('cloudApiKey');
+    const models = await listOpenCodeZenModels(
+      baseUrl || settings.openCodeZenBaseUrl,
+      apiKey
+    );
+    return { ok: true, models };
+  });
+
   ipcMain.handle('seer:testDocsRepo', async (_event, repoPath: string) => {
     const chunks = indexDocusaurusRepo(repoPath);
     const uniqueFiles = new Set(chunks.map((c) => c.relativePath)).size;
@@ -174,6 +186,22 @@ function registerIpcHandlers() {
 
   ipcMain.handle('seer:resetTaxonomy', async () => {
     return storage.resetTaxonomyAndPrompts();
+  });
+
+  ipcMain.handle('seer:submitVerdictAudit', async (_event, payload: VerdictAuditPayload) => {
+    return storage.submitVerdictAudit(payload);
+  });
+
+  ipcMain.handle('seer:getAccuracyMetrics', async (_event, runId?: string) => {
+    return storage.getAccuracyMetrics(runId);
+  });
+
+  ipcMain.handle('seer:getCalibrationExamples', async () => {
+    return storage.getCalibrationExamples();
+  });
+
+  ipcMain.handle('seer:deleteCalibrationExample', async (_event, exampleId: string) => {
+    return storage.deleteCalibrationExample(exampleId);
   });
 
   ipcMain.handle(
@@ -232,10 +260,13 @@ function registerIpcHandlers() {
         dateRangeEnd: params.dateRangeEnd,
         docsRepoPath: settings.docsRepoPath,
         taxonomy,
+        calibrationExamples: storage.getCalibrationExamples(),
         aiConfig: {
           provider: settings.aiProvider,
           ollamaBaseUrl: settings.ollamaBaseUrl,
           ollamaModel: settings.ollamaModel,
+          openCodeZenBaseUrl: settings.openCodeZenBaseUrl,
+          openCodeZenModel: settings.openCodeZenModel,
           cloudModel: settings.cloudModel,
           cloudApiKey: storage.getSecret('cloudApiKey'),
         },

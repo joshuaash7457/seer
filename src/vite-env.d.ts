@@ -1,14 +1,17 @@
 /// <reference types="vite/client" />
 
 import {
+  AccuracyMetrics,
   AnalysisProgressEvent,
   AnalysisRunSummary,
   AppSettings,
+  CalibrationExample,
   DocFileInspection,
   GapRecommendation,
   ScrubResult,
   TaxonomyAndPromptsConfig,
   TicketAnalysisVerdict,
+  VerdictAuditPayload,
 } from './types/seer';
 
 export interface SeerWindowApi {
@@ -19,6 +22,7 @@ export interface SeerWindowApi {
   selectDocsFolder: () => Promise<string | null>;
   selectTicketFile: () => Promise<string | null>;
   testOllama: (baseUrl: string) => Promise<{ ok: boolean; models: string[] }>;
+  listOpenCodeZenModels: (baseUrl?: string) => Promise<{ ok: boolean; models: string[] }>;
   testDocsRepo: (repoPath: string) => Promise<{
     ok: boolean;
     chunkCount: number;
@@ -41,6 +45,15 @@ export interface SeerWindowApi {
   getTaxonomy: () => Promise<TaxonomyAndPromptsConfig>;
   saveTaxonomy: (config: TaxonomyAndPromptsConfig) => Promise<TaxonomyAndPromptsConfig>;
   resetTaxonomy: () => Promise<TaxonomyAndPromptsConfig>;
+  submitVerdictAudit: (payload: VerdictAuditPayload) => Promise<{
+    verdict: TicketAnalysisVerdict;
+    recommendations: GapRecommendation[];
+    metrics: AccuracyMetrics;
+    calibrationExamples: CalibrationExample[];
+  }>;
+  getAccuracyMetrics: (runId?: string) => Promise<AccuracyMetrics>;
+  getCalibrationExamples: () => Promise<CalibrationExample[]>;
+  deleteCalibrationExample: (exampleId: string) => Promise<CalibrationExample[]>;
   runAnalysis: (params: {
     sourceMode: 'csv' | 'hubspot' | 'sample';
     ticketFilePath?: string;
