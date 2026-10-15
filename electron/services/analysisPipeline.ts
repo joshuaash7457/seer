@@ -459,12 +459,49 @@ export function clusterVerdictsIntoRecommendations(
     const priorityScore = Math.round(count * 25 * severityMultiplier * avgConfidence);
 
     const uniqueQuestions = Array.from(new Set(items.map((i) => i.customerQuestion))).slice(0, 5);
+    const uniqueResolutions = Array.from(
+      new Set(items.map((i) => i.resolutionSummary).filter(Boolean))
+    ).slice(0, 5);
     const recId = `rec_${crypto.createHash('md5').update(`${runId}-${key}`).digest('hex').slice(0, 8)}`;
+
+    const title = primary.suggestedTitleOrSection || `${primary.product}: ${primary.category}`;
+    const draftMdxOutline =
+      primary.fixType === 'BUILD_TOOL'
+        ? [
+            `{/* Interactive Tool Spec for ${primary.matchedDocPath || 'docs/knowledge-base/tools/'} */}`,
+            `## ${title}`,
+            ``,
+            `**Problem Solved:** ${primary.gapReasoning}`,
+            ``,
+            `### Interactive Inputs`,
+            `- User's Current PC IPv4 Address & Subnet Mask`,
+            `- Target ${primary.product} Fallback/Current IP (e.g., \`192.168.100.88\`)`,
+            ``,
+            `### Automated Output Steps`,
+            ...uniqueResolutions.map((r, idx) => `${idx + 1}. ${r}`),
+          ].join('\n')
+        : [
+            `---`,
+            `title: "${title.replace(/"/g, '\\"')}"`,
+            `---`,
+            ``,
+            `## ${title}`,
+            ``,
+            `:::tip Quick Summary`,
+            `${primary.recommendedAction}`,
+            `:::`,
+            ``,
+            `### Common Symptoms`,
+            ...uniqueQuestions.map((q) => `- "${q}"`),
+            ``,
+            `### Step-by-Step Resolution`,
+            ...uniqueResolutions.map((r, idx) => `${idx + 1}. ${r}`),
+          ].join('\n');
 
     recommendations.push({
       id: recId,
       runId,
-      title: primary.suggestedTitleOrSection || `${primary.product}: ${primary.category}`,
+      title,
       product: primary.product,
       category: primary.category,
       verdict: primary.verdict,
@@ -476,6 +513,8 @@ export function clusterVerdictsIntoRecommendations(
       whyDocsFailed: primary.gapReasoning,
       concreteAction: primary.recommendedAction,
       exampleQuestions: uniqueQuestions,
+      resolutionSummaries: uniqueResolutions,
+      draftMdxOutline,
       ticketIds: items.map((i) => i.externalId),
     });
   }

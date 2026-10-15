@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import matter from 'gray-matter';
-import { DocChunk } from '../../src/types/seer';
+import { DocChunk, DocFileInspection } from '../../src/types/seer';
 
 const ALIAS_MAP: Record<string, string> = {
   '@site/': '',
@@ -295,3 +295,67 @@ export function searchDocChunks(
     .slice(0, topK)
     .map((item) => item.chunk);
 }
+
+export function inspectDocFile(repoPath: string, relativePath: string): DocFileInspection {
+  if (!repoPath || !relativePath) {
+    return {
+      found: false,
+      relativePath: relativePath || '',
+      absolutePath: '',
+      title: '',
+      rawMdx: '',
+      expandedText: '',
+      wordCount: 0,
+    };
+  }
+
+  const repoRoot = fs.existsSync(path.join(repoPath, 'docs'))
+    ? repoPath
+    : path.dirname(repoPath);
+
+  const absPath = path.resolve(repoRoot, relativePath);
+  if (!fs.existsSync(absPath)) {
+    return {
+      found: false,
+      relativePath,
+      absolutePath: absPath,
+      title: path.basename(relativePath),
+      rawMdx: '',
+      expandedText: '',
+      wordCount: 0,
+    };
+  }
+
+  const rawMdx = fs.readFileSync(absPath, 'utf-8');
+  let parsed: matter.GrayMatterFile<string>;
+  try {
+    parsed = matter(rawMdx);
+  } catch {
+    parsed = {
+      content: rawMdx,
+      data: {},
+      orig: rawMdx,
+      language: '',
+      matter: '',
+      stringify: () => '',
+    };
+  }
+
+  const expandedRaw = resolveImportedMdxContent(parsed.content, absPath, repoRoot);
+  const expandedText = cleanMdxMarkup(expandedRaw);
+  const words = expandedText.split(/\s+/).filter(Boolean).length;
+  const title =
+    (typeof parsed.data?.title === 'string' && parsed.data.title) ||
+    path.basename(relativePath, path.extname(relativePath));
+
+  return {
+    found: true,
+    relativePath,
+    absolutePath: absPath,
+    title,
+    rawMdx,
+    expandedText,
+    wordCount: words,
+  };
+}
+

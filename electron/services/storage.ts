@@ -201,6 +201,14 @@ export class SeerStorage {
     return config;
   }
 
+  public resetTaxonomyAndPrompts(): TaxonomyAndPromptsConfig {
+    const defaults = JSON.parse(
+      fs.readFileSync(this.defaultTaxonomyPath, 'utf-8')
+    ) as TaxonomyAndPromptsConfig;
+    fs.writeFileSync(this.taxonomyFilePath, JSON.stringify(defaults, null, 2), 'utf-8');
+    return defaults;
+  }
+
   public saveRunResult(
     run: AnalysisRunSummary,
     verdicts: TicketAnalysisVerdict[],

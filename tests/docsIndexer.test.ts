@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
-import { indexDocusaurusRepo, searchDocChunks } from '../electron/services/docsIndexer';
+import { indexDocusaurusRepo, inspectDocFile, searchDocChunks } from '../electron/services/docsIndexer';
 
 describe('Docusaurus MDX Indexer & Search', () => {
   it('indexes MDX files, resolves @kbComponents imports, flags video-only stubs, and retrieves matching chunks', () => {
@@ -49,6 +49,15 @@ describe('Docusaurus MDX Indexer & Search', () => {
 
     expect(matches.length).toBeGreaterThan(0);
     expect(matches[0].title).toBe('Move 4K Network & IP Discovery');
+
+    // Test Phase 2 inspectDocFile for Evidence Drawer
+    const inspected = inspectDocFile(
+      tmpDir,
+      'docs/knowledge-base/joysticks/superjoy/superjoy-configuration-failed.mdx'
+    );
+    expect(inspected.found).toBe(true);
+    expect(inspected.rawMdx).toContain('@kbComponents/troubleshooting/config-failed.mdx');
+    expect(inspected.expandedText).toContain('Configuration Failed Troubleshooting Guide');
 
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });

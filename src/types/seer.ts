@@ -116,7 +116,19 @@ export interface GapRecommendation {
   whyDocsFailed: string;
   concreteAction: string;
   exampleQuestions: string[];
+  resolutionSummaries: string[];
+  draftMdxOutline: string;
   ticketIds: string[];
+}
+
+export interface DocFileInspection {
+  found: boolean;
+  relativePath: string;
+  absolutePath: string;
+  title: string;
+  rawMdx: string;
+  expandedText: string;
+  wordCount: number;
 }
 
 export interface AnalysisRunSummary {

@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 import { getSamplePTZOpticsTickets, normalizeAndScrubTickets } from '../electron/services/ticketIngestor';
 import { runFullGapAnalysis } from '../electron/services/analysisPipeline';
+import { SeerStorage } from '../electron/services/storage';
 import { TaxonomyAndPromptsConfig } from '../src/types/seer';
 
 describe('End-to-End Gap Analysis Pipeline', () => {
@@ -54,5 +56,30 @@ describe('End-to-End Gap Analysis Pipeline', () => {
     const topRec = result.recommendations[0];
     expect(topRec.ticketCount).toBe(2);
     expect(['EDIT_ARTICLE', 'BUILD_TOOL']).toContain(topRec.fixType);
+    expect(topRec.resolutionSummaries.length).toBeGreaterThan(0);
+    expect(topRec.draftMdxOutline.length).toBeGreaterThan(40);
+  });
+
+  it('persists and resets editable PTZOptics taxonomy and AI system prompts', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'seer-storage-test-'));
+    const store = new SeerStorage({ dataDir: tmpDir });
+
+    const initial = store.getTaxonomyAndPrompts();
+    expect(initial.products).toContain('Move 4K');
+
+    const modified: TaxonomyAndPromptsConfig = {
+      ...initial,
+      products: [...initial.products, 'Move Pro 8K Test Camera'],
+    };
+    store.saveTaxonomyAndPrompts(modified);
+
+    const reloaded = store.getTaxonomyAndPrompts();
+    expect(reloaded.products).toContain('Move Pro 8K Test Camera');
+
+    const reset = store.resetTaxonomyAndPrompts();
+    expect(reset.products).not.toContain('Move Pro 8K Test Camera');
+    expect(reset.products).toContain('Move 4K');
+
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 });
