@@ -133,27 +133,71 @@ function fallbackExtractAndJudge(
     customerQuestion =
       'Why does the SuperJoy display "Configuration Failed" when adding or pairing a PTZOptics camera?';
     resolutionSummary =
-      'Verify the SuperJoy and camera are on the same IP subnet and set the control protocol to VISCA over IP (UDP port 1259) or verify ONVIF credentials.';
+      'Verify the SuperJoy and camera are on the same IP subnet, confirm DHCP/router readiness, and set control protocol to VISCA over IP (UDP port 1259) or verify ONVIF credentials.';
 
-    const sjDoc =
-      matchedChunks.find((c) => c.relativePath.includes('superjoy-configuration-failed')) || topDoc;
-    const sjContent = sjDoc ? sjDoc.content : '';
-    const isVideoStub = sjContent.includes('only links to a YouTube video') || sjContent.length < 180;
+    // Prefer the dedicated configuration-failed.mdx doc if present in matchedChunks
+    const configFailedDoc =
+      matchedChunks.find((c) => c.relativePath.endsWith('configuration-failed.mdx')) ||
+      matchedChunks.find((c) => c.relativePath.includes('configuration-failed')) ||
+      topDoc;
+
+    const joystickErrorsDoc = matchedChunks.find((c) =>
+      c.relativePath.includes('common-error-messages/joysticks.mdx')
+    );
+
+    const cfContent = configFailedDoc ? configFailedDoc.content : '';
+    const cfWords = configFailedDoc ? configFailedDoc.wordCount : 0;
+    const isCfVideoStub =
+      cfContent.includes('only links to a YouTube video') || cfWords < 35;
+
+    if (!isCfVideoStub && configFailedDoc) {
+      // The user has updated configuration-failed.mdx with written steps!
+      const mentionsPortOrVisca = /1259|visca|onvif|subnet/i.test(cfContent);
+      return {
+        extraction: { isSelfServiceable: true, product, category, customerQuestion, resolutionSummary },
+        judge: {
+          verdict: mentionsPortOrVisca ? 'WELL_COVERED' : 'PARTIAL_COVERAGE',
+          fixType: mentionsPortOrVisca ? 'NONE' : 'EDIT_ARTICLE',
+          matchedDocPath: configFailedDoc.relativePath,
+          matchedDocTitle: configFailedDoc.title,
+          confidence: 0.94,
+          gapReasoning: mentionsPortOrVisca
+            ? `${configFailedDoc.relativePath} (${cfWords} words) now includes written troubleshooting steps covering network/subnet and control configuration.`
+            : `${configFailedDoc.relativePath} (${cfWords} words) now has written network/DHCP steps, but does not yet mention VISCA UDP port 1259 or ONVIF password mismatches when adding a camera.`,
+          recommendedAction: mentionsPortOrVisca
+            ? 'No change needed — written troubleshooting steps are now present.'
+            : `Add a note to ${configFailedDoc.relativePath} covering VISCA over IP UDP port 1259 and ONVIF credential checks.`,
+          suggestedTitleOrSection:
+            'SuperJoy "Configuration Failed" Checklist (Subnet, Port 1259 & ONVIF Credentials)',
+        },
+      };
+    }
+
     return {
       extraction: { isSelfServiceable: true, product, category, customerQuestion, resolutionSummary },
       judge: {
-        verdict: isVideoStub ? 'COVERED_FOUND_UNHELPFUL' : 'PARTIAL_COVERAGE',
+        verdict: 'COVERED_FOUND_UNHELPFUL',
         fixType: 'EDIT_ARTICLE',
         matchedDocPath:
-          sjDoc?.relativePath ||
-          'docs/knowledge-base/joysticks/superjoy/superjoy-configuration-failed.mdx',
-        matchedDocTitle: sjDoc?.title || 'Configuration Failed',
+          configFailedDoc?.relativePath ||
+          'docs/knowledge-base/troubleshooting/configuration-failed.mdx',
+        matchedDocTitle: configFailedDoc?.title || 'Configuration Failed',
         confidence: 0.94,
-        gapReasoning:
-          'The existing SuperJoy "Configuration Failed" KB page only embeds a YouTube video thumbnail with zero written troubleshooting steps, leaving users blocked if they cannot watch video or need quick port/subnet checks.',
-        recommendedAction:
-          'Replace the video-only stub in superjoy-configuration-failed.mdx with a written step-by-step checklist: (1) Subnet match verification, (2) VISCA over IP UDP port 1259 vs ONVIF credentials check, and (3) Camera control address uniqueness.',
-        suggestedTitleOrSection: 'SuperJoy "Configuration Failed" Checklist (Subnet, Port 1259 & ONVIF Credentials)',
+        gapReasoning: joystickErrorsDoc
+          ? `While ${joystickErrorsDoc.relativePath} includes written steps for "Configuration Failed", the standalone page ${
+              configFailedDoc?.relativePath ||
+              'docs/knowledge-base/troubleshooting/configuration-failed.mdx'
+            } (${cfWords} words) still only embeds a YouTube video thumbnail with no written checklist.`
+          : `The standalone page ${
+              configFailedDoc?.relativePath ||
+              'docs/knowledge-base/troubleshooting/configuration-failed.mdx'
+            } (${cfWords} words) only embeds a YouTube video thumbnail with no written troubleshooting steps.`,
+        recommendedAction: `Replace the video-only stub in ${
+          configFailedDoc?.relativePath ||
+          'docs/knowledge-base/troubleshooting/configuration-failed.mdx'
+        } with the written checklist (DHCP/router check, subnet match, and VISCA UDP port 1259 / ONVIF credentials).`,
+        suggestedTitleOrSection:
+          'SuperJoy "Configuration Failed" Checklist (Subnet, Port 1259 & ONVIF Credentials)',
       },
     };
   }

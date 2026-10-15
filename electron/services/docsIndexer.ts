@@ -8,12 +8,13 @@ const ALIAS_MAP: Record<string, string> = {
   '@site/': '',
   '@dev/': 'docs/developers/',
   '@devComponents/': 'docs/developers/components/',
-  '@tech/': 'docs/technical-docs/',
-  '@techComponents/': 'docs/technical-docs/components/',
+  '@tech/': 'docs/devices/',
+  '@techComponents/': 'docs/devices/components/',
   '@kb/': 'docs/knowledge-base/',
   '@kbComponents/': 'docs/knowledge-base/components/',
   '@apps/': 'docs/applications/',
   '@appComponents/': 'docs/applications/components/',
+  '@components/': 'docs/components/',
 };
 
 const PRODUCT_HINTS: Array<{ pattern: RegExp; label: string }> = [
@@ -266,23 +267,42 @@ export function searchDocChunks(
 
   const uniqueTokens = Array.from(new Set(queryTokens));
   const productLower = (query.product || '').toLowerCase();
+  const fullQueryLower = queryString.toLowerCase();
 
   const scored = chunks.map((chunk) => {
-    const titleLower = `${chunk.title} ${chunk.sectionHeading}`.toLowerCase();
+    const pageTitleLower = chunk.title.toLowerCase().trim();
+    const sectionLower = chunk.sectionHeading.toLowerCase().trim();
+    const titleLower = `${pageTitleLower} ${sectionLower}`;
     const pathLower = chunk.relativePath.toLowerCase();
+    const fileSlug = path
+      .basename(pathLower, path.extname(pathLower))
+      .replace(/[-_]+/g, ' ')
+      .trim();
     const bodyLower = chunk.content.toLowerCase();
 
     let score = 0;
+
+    // Strong boost when the ticket explicitly mentions the exact article title, section heading, or filename phrase
+    if (pageTitleLower.length >= 5 && fullQueryLower.includes(pageTitleLower)) {
+      score += 30.0;
+    }
+    if (sectionLower.length >= 5 && fullQueryLower.includes(sectionLower)) {
+      score += 25.0;
+    }
+    if (fileSlug.length >= 5 && fileSlug !== 'index' && fullQueryLower.includes(fileSlug)) {
+      score += 30.0;
+    }
+
     for (const token of uniqueTokens) {
       if (titleLower.includes(token)) score += 4.0;
       if (pathLower.includes(token)) score += 3.0;
-      if (bodyLower.includes(token)) score += 1.5;
+      if (bodyLower.includes(token)) score += 1.2;
     }
 
     if (productLower && productLower !== 'general / multiple ptzoptics gear') {
       const shortProd = productLower.split('(')[0].trim();
       if (shortProd && (pathLower.includes(shortProd.replace(/\s+/g, '-')) || titleLower.includes(shortProd))) {
-        score += 5.0;
+        score += 4.0;
       }
     }
 

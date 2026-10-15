@@ -59,6 +59,14 @@ describe('Docusaurus MDX Indexer & Search', () => {
     expect(inspected.rawMdx).toContain('@kbComponents/troubleshooting/config-failed.mdx');
     expect(inspected.expandedText).toContain('Configuration Failed Troubleshooting Guide');
 
+    // Verify exact title/filename boost ranks configuration-failed.mdx #1 over a longer doc
+    const cfSearch = searchDocChunks(chunks, {
+      product: 'Move 4K',
+      category: 'Joystick Controller Pairing & Mapping',
+      customerQuestion: 'SuperJoy says Configuration Failed when adding Move 4K camera',
+    });
+    expect(cfSearch[0].relativePath).toContain('configuration-failed.mdx');
+
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 });
