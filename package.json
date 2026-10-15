@@ -1,6 +1,6 @@
 {
   "name": "seer",
-  "version": "0.3.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Seer — Support-driven knowledge base gap analysis for PTZOptics",
   "main": "dist-electron/main.cjs",

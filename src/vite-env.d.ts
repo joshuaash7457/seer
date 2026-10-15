@@ -8,9 +8,12 @@ import {
   CalibrationExample,
   DocFileInspection,
   GapRecommendation,
+  LeadershipReportBundle,
   ScrubResult,
+  ShippedFixRecord,
   TaxonomyAndPromptsConfig,
   TicketAnalysisVerdict,
+  TrendsComparisonResult,
   VerdictAuditPayload,
 } from './types/seer';
 
@@ -54,6 +57,27 @@ export interface SeerWindowApi {
   getAccuracyMetrics: (runId?: string) => Promise<AccuracyMetrics>;
   getCalibrationExamples: () => Promise<CalibrationExample[]>;
   deleteCalibrationExample: (exampleId: string) => Promise<CalibrationExample[]>;
+  getShippedFixes: () => Promise<ShippedFixRecord[]>;
+  markRecommendationShipped: (
+    recommendationId: string,
+    notes?: string
+  ) => Promise<ShippedFixRecord[]>;
+  deleteShippedFix: (fixId: string) => Promise<ShippedFixRecord[]>;
+  getTrendsAndReport: (
+    currentRunId?: string,
+    previousRunId?: string
+  ) => Promise<{
+    trends: TrendsComparisonResult;
+    report: LeadershipReportBundle | null;
+  }>;
+  seedPreviousWeekBaselineRun: () => Promise<{
+    baselineRunId: string;
+    shippedFixes: ShippedFixRecord[];
+  }>;
+  exportReportToFile: (
+    format: 'html' | 'markdown',
+    content: string
+  ) => Promise<string | null>;
   runAnalysis: (params: {
     sourceMode: 'csv' | 'hubspot' | 'sample';
     ticketFilePath?: string;

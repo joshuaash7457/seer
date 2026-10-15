@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } from 'electron';
+import fs from 'fs';
 import path from 'path';
 import { SeerStorage } from './services/storage';
 import { listOllamaModels, listOpenCodeZenModels } from './services/aiProvider';
@@ -203,6 +204,60 @@ function registerIpcHandlers() {
   ipcMain.handle('seer:deleteCalibrationExample', async (_event, exampleId: string) => {
     return storage.deleteCalibrationExample(exampleId);
   });
+
+  ipcMain.handle('seer:getShippedFixes', async () => {
+    return storage.getShippedFixes();
+  });
+
+  ipcMain.handle(
+    'seer:markRecommendationShipped',
+    async (_event, recommendationId: string, notes?: string) => {
+      return storage.markRecommendationShipped(recommendationId, notes);
+    }
+  );
+
+  ipcMain.handle('seer:deleteShippedFix', async (_event, fixId: string) => {
+    return storage.deleteShippedFix(fixId);
+  });
+
+  ipcMain.handle(
+    'seer:getTrendsAndReport',
+    async (_event, currentRunId?: string, previousRunId?: string) => {
+      return storage.getTrendsAndReport(currentRunId, previousRunId);
+    }
+  );
+
+  ipcMain.handle('seer:seedPreviousWeekBaselineRun', async () => {
+    return storage.seedPreviousWeekBaselineRun();
+  });
+
+  ipcMain.handle(
+    'seer:exportReportToFile',
+    async (_event, format: 'html' | 'markdown', content: string) => {
+      if (!mainWindow) return null;
+      const ext = format === 'html' ? 'html' : 'md';
+      const defaultName = `Seer-PTZOptics-Gap-Report-${new Date()
+        .toISOString()
+        .slice(0, 10)}.${ext}`;
+      const res = await dialog.showSaveDialog(mainWindow, {
+        title: `Export Leadership Gap Report (${format.toUpperCase()})`,
+        defaultPath: defaultName,
+        filters: [
+          format === 'html'
+            ? { name: 'HTML Report', extensions: ['html'] }
+            : { name: 'Markdown Report', extensions: ['md'] },
+        ],
+      });
+      if (res.canceled || !res.filePath) return null;
+      fs.writeFileSync(res.filePath, content, 'utf-8');
+      if (format === 'html') {
+        shell.openPath(res.filePath);
+      } else {
+        shell.showItemInFolder(res.filePath);
+      }
+      return res.filePath;
+    }
+  );
 
   ipcMain.handle(
     'seer:runAnalysis',

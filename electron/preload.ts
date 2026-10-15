@@ -36,6 +36,16 @@ contextBridge.exposeInMainWorld('seerApi', {
   getCalibrationExamples: () => ipcRenderer.invoke('seer:getCalibrationExamples'),
   deleteCalibrationExample: (exampleId: string) =>
     ipcRenderer.invoke('seer:deleteCalibrationExample', exampleId),
+  getShippedFixes: () => ipcRenderer.invoke('seer:getShippedFixes'),
+  markRecommendationShipped: (recommendationId: string, notes?: string) =>
+    ipcRenderer.invoke('seer:markRecommendationShipped', recommendationId, notes),
+  deleteShippedFix: (fixId: string) => ipcRenderer.invoke('seer:deleteShippedFix', fixId),
+  getTrendsAndReport: (currentRunId?: string, previousRunId?: string) =>
+    ipcRenderer.invoke('seer:getTrendsAndReport', currentRunId, previousRunId),
+  seedPreviousWeekBaselineRun: () =>
+    ipcRenderer.invoke('seer:seedPreviousWeekBaselineRun'),
+  exportReportToFile: (format: 'html' | 'markdown', content: string) =>
+    ipcRenderer.invoke('seer:exportReportToFile', format, content),
   runAnalysis: (params: {
     sourceMode: 'csv' | 'hubspot' | 'sample';
     ticketFilePath?: string;

@@ -16,12 +16,14 @@ import {
   Play,
   Plus,
   RefreshCw,
+  Rocket,
   RotateCcw,
   Search,
   Settings,
   ShieldCheck,
   Sliders,
   Trash2,
+  TrendingUp,
   Wrench,
   X,
 } from 'lucide-react';
@@ -35,15 +37,19 @@ import {
   FixType,
   GapRecommendation,
   GapVerdictType,
+  LeadershipReportBundle,
   ScrubResult,
+  ShippedFixRecord,
   TaxonomyAndPromptsConfig,
   TicketAnalysisVerdict,
+  TrendsComparisonResult,
   VerdictAuditPayload,
 } from './types/seer';
 import { SeerLogo } from './components/SeerLogo';
 import { SpotCheckPanel } from './components/SpotCheckPanel';
+import { TrendsAndReportPanel } from './components/TrendsAndReportPanel';
 
-type NavTab = 'dashboard' | 'spot_check' | 'taxonomy' | 'pii_lab' | 'settings';
+type NavTab = 'dashboard' | 'trends_report' | 'spot_check' | 'taxonomy' | 'pii_lab' | 'settings';
 type ResultsSubTab = 'recommendations' | 'verdicts';
 
 function formatFixBadge(fixType: FixType) {
@@ -194,6 +200,11 @@ export default function App() {
   const [accuracyMetrics, setAccuracyMetrics] = useState<AccuracyMetrics | null>(null);
   const [calibrationExamples, setCalibrationExamples] = useState<CalibrationExample[]>([]);
 
+  // Phase 4: Trends, Shipped Fixes & Leadership Report state
+  const [shippedFixes, setShippedFixes] = useState<ShippedFixRecord[]>([]);
+  const [trendsResult, setTrendsResult] = useState<TrendsComparisonResult | null>(null);
+  const [leadershipReport, setLeadershipReport] = useState<LeadershipReportBundle | null>(null);
+
   // PII Lab state
   const [piiInputText, setPiiInputText] = useState(DEFAULT_PII_SAMPLE);
   const [piiCustomerName, setPiiCustomerName] = useState('Pastor David Miller');
@@ -213,6 +224,7 @@ export default function App() {
 
     window.seerApi.getTaxonomy().then(setTaxonomy);
     window.seerApi.getCalibrationExamples().then(setCalibrationExamples);
+    window.seerApi.getShippedFixes().then(setShippedFixes);
 
     window.seerApi.getRuns().then((loadedRuns) => {
       setRuns(loadedRuns);
@@ -224,6 +236,10 @@ export default function App() {
           setVerdicts(details.verdicts);
         });
         window.seerApi.getAccuracyMetrics(latestId).then(setAccuracyMetrics);
+        window.seerApi.getTrendsAndReport(latestId).then((tr) => {
+          setTrendsResult(tr.trends);
+          setLeadershipReport(tr.report);
+        });
       } else {
         window.seerApi.getAccuracyMetrics().then(setAccuracyMetrics);
       }
@@ -375,6 +391,9 @@ export default function App() {
       setRuns(updatedRuns);
       const metrics = await window.seerApi.getAccuracyMetrics(result.run.id);
       setAccuracyMetrics(metrics);
+      const tr = await window.seerApi.getTrendsAndReport(result.run.id);
+      setTrendsResult(tr.trends);
+      setLeadershipReport(tr.report);
     } catch (err: unknown) {
       setRunError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -390,6 +409,9 @@ export default function App() {
     setSelectedRec(null);
     const metrics = await window.seerApi.getAccuracyMetrics(runId);
     setAccuracyMetrics(metrics);
+    const tr = await window.seerApi.getTrendsAndReport(runId);
+    setTrendsResult(tr.trends);
+    setLeadershipReport(tr.report);
   };
 
   const handleSubmitVerdictAudit = async (payload: VerdictAuditPayload) => {
@@ -398,6 +420,57 @@ export default function App() {
     setRecommendations(res.recommendations);
     setAccuracyMetrics(res.metrics);
     setCalibrationExamples(res.calibrationExamples);
+    if (currentRun) {
+      const tr = await window.seerApi.getTrendsAndReport(currentRun.id);
+      setTrendsResult(tr.trends);
+      setLeadershipReport(tr.report);
+    }
+  };
+
+  const handleMarkRecShipped = async (recId: string) => {
+    const updatedShipped = await window.seerApi.markRecommendationShipped(recId);
+    setShippedFixes(updatedShipped);
+    if (currentRun) {
+      const tr = await window.seerApi.getTrendsAndReport(currentRun.id);
+      setTrendsResult(tr.trends);
+      setLeadershipReport(tr.report);
+    }
+  };
+
+  const handleDeleteShippedFix = async (fixId: string) => {
+    const updatedShipped = await window.seerApi.deleteShippedFix(fixId);
+    setShippedFixes(updatedShipped);
+    if (currentRun) {
+      const tr = await window.seerApi.getTrendsAndReport(currentRun.id);
+      setTrendsResult(tr.trends);
+      setLeadershipReport(tr.report);
+    }
+  };
+
+  const handleSelectBaselineRun = async (previousRunId: string) => {
+    if (!currentRun) return;
+    const tr = await window.seerApi.getTrendsAndReport(currentRun.id, previousRunId);
+    setTrendsResult(tr.trends);
+    setLeadershipReport(tr.report);
+  };
+
+  const handleSeedBaselineRun = async () => {
+    const seeded = await window.seerApi.seedPreviousWeekBaselineRun();
+    setShippedFixes(seeded.shippedFixes);
+    const updatedRuns = await window.seerApi.getRuns();
+    setRuns(updatedRuns);
+    if (currentRun) {
+      const tr = await window.seerApi.getTrendsAndReport(
+        currentRun.id,
+        seeded.baselineRunId
+      );
+      setTrendsResult(tr.trends);
+      setLeadershipReport(tr.report);
+    }
+  };
+
+  const handleExportReport = async (format: 'html' | 'markdown', content: string) => {
+    return window.seerApi.exportReportToFile(format, content);
   };
 
   const handleDeleteCalibration = async (id: string) => {
@@ -473,6 +546,17 @@ export default function App() {
           >
             <Layers className="w-4 h-4" />
             Gap Analysis
+          </button>
+          <button
+            onClick={() => setActiveTab('trends_report')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium transition ${
+              activeTab === 'trends_report'
+                ? 'bg-sky-500 text-slate-950 shadow-sm'
+                : 'text-slate-300 hover:bg-slate-800'
+            }`}
+          >
+            <TrendingUp className="w-4 h-4" />
+            Trends & Report
           </button>
           <button
             onClick={() => setActiveTab('spot_check')}
@@ -831,6 +915,29 @@ export default function App() {
                                 </div>
                               </div>
                               <button
+                                onClick={() => handleMarkRecShipped(rec.id)}
+                                className={`px-3 py-2 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition ${
+                                  shippedFixes.some(
+                                    (s) =>
+                                      s.recommendationId === rec.id ||
+                                      (rec.targetDocPath &&
+                                        s.targetDocPath === rec.targetDocPath)
+                                  )
+                                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                                }`}
+                                title="Mark this doc/tool recommendation as Shipped to track ticket volume reduction in future runs"
+                              >
+                                <Rocket className="w-3.5 h-3.5" />
+                                {shippedFixes.some(
+                                  (s) =>
+                                    s.recommendationId === rec.id ||
+                                    (rec.targetDocPath && s.targetDocPath === rec.targetDocPath)
+                                )
+                                  ? 'Shipped ✓'
+                                  : 'Mark Shipped'}
+                              </button>
+                              <button
                                 onClick={() => handleOpenEvidenceDrawer(rec)}
                                 className="px-3.5 py-2 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border border-sky-500/30 text-xs font-semibold flex items-center gap-1.5 transition"
                               >
@@ -968,6 +1075,20 @@ export default function App() {
               </div>
             )}
           </>
+        )}
+
+        {/* Phase 4: Trends & Leadership Report Tab */}
+        {activeTab === 'trends_report' && (
+          <TrendsAndReportPanel
+            runs={runs}
+            currentRun={currentRun}
+            trends={trendsResult}
+            report={leadershipReport}
+            onSelectBaselineRun={handleSelectBaselineRun}
+            onSeedBaselineRun={handleSeedBaselineRun}
+            onDeleteShippedFix={handleDeleteShippedFix}
+            onExportReport={handleExportReport}
+          />
         )}
 
         {/* Phase 3: Spot-Check & Trust Score Tab */}
